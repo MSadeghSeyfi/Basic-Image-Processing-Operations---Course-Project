@@ -360,13 +360,13 @@ class ImageProcessorApp(ctk.CTk):
         # Image canvas frame (left side) - fixed size to prevent resizing
         self.canvas_frame = ctk.CTkFrame(self.display_container)
         self.canvas_frame.pack(side="left", fill="both", expand=True)
+        self.canvas_frame.pack_propagate(False)  # Prevent frame from resizing based on content
 
-        # Image label - centered and fixed
+        # Image label - centered and fixed, with explicit size constraints
         self.image_label = ctk.CTkLabel(
             self.canvas_frame,
             text="Load an image to start",
-            font=ctk.CTkFont(size=16),
-            anchor="center"
+            font=ctk.CTkFont(size=16)
         )
         self.image_label.place(relx=0.5, rely=0.5, anchor="center")
 
@@ -525,19 +525,22 @@ class ImageProcessorApp(ctk.CTk):
         frame_width = self.canvas_frame.winfo_width()
         frame_height = self.canvas_frame.winfo_height()
 
-        # Apply padding
-        max_width = max(frame_width - 60, 100)
-        max_height = max(frame_height - 60, 100)
+        # Apply padding to ensure image never touches edges
+        max_width = max(frame_width - 40, 100)
+        max_height = max(frame_height - 40, 100)
 
         # Create PIL image
         img = Image.fromarray(self.current_image.astype(np.uint8))
         img_width, img_height = img.size
 
-        # Calculate resize ratio - ALWAYS fit, even if image is smaller
-        # But don't upscale more than 1.0 for small images
+        # Calculate resize ratio - ALWAYS fit within frame
         width_ratio = max_width / img_width
         height_ratio = max_height / img_height
-        ratio = min(width_ratio, height_ratio, 1.0)
+        ratio = min(width_ratio, height_ratio)
+
+        # Don't upscale small images beyond original size
+        if ratio > 1.0:
+            ratio = 1.0
 
         new_width = int(img_width * ratio)
         new_height = int(img_height * ratio)
@@ -545,6 +548,14 @@ class ImageProcessorApp(ctk.CTk):
         # Ensure minimum size
         new_width = max(new_width, 50)
         new_height = max(new_height, 50)
+
+        # Final safety check - ensure dimensions don't exceed frame
+        if new_width > max_width:
+            new_width = max_width
+            new_height = int(new_width * img_height / img_width)
+        if new_height > max_height:
+            new_height = max_height
+            new_width = int(new_height * img_width / img_height)
 
         # Create CTkImage (handles HighDPI automatically)
         self.ctk_image = ctk.CTkImage(
