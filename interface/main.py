@@ -31,12 +31,18 @@ class ImageProcessorApp(ctk.CTk):
         self.current_image: Optional[np.ndarray] = None
         self.history: List[np.ndarray] = []
         self.max_history = 20
+        self.gradient_applied = False  # Track if gradient magnitude was applied
+
+        # Debug log
+        self.debug_log: List[str] = []
 
         # Build UI
         self._create_layout()
         self._create_toolbar()
         self._create_image_display()
         self._create_status_bar()
+        self._create_loading_overlay()
+        self._create_debug_console()
 
     def _create_layout(self):
         """Create main layout frames"""
@@ -164,23 +170,25 @@ class ImageProcessorApp(ctk.CTk):
             text="4. Gamma",
             command=self.op_gamma_transform,
             height=35,
-            width=120
+            width=100
         )
         self.btn_gamma.pack(side="left", padx=(0, 5))
 
-        self.gamma_slider = ctk.CTkSlider(
+        self.gamma_entry = ctk.CTkEntry(
             gamma_frame,
-            from_=0.1,
-            to=3.0,
-            number_of_steps=29,
-            width=100
+            width=60,
+            placeholder_text="γ"
         )
-        self.gamma_slider.set(1.0)
-        self.gamma_slider.pack(side="left", padx=5)
+        self.gamma_entry.insert(0, "1.0")
+        self.gamma_entry.pack(side="left", padx=5)
 
-        self.gamma_label = ctk.CTkLabel(gamma_frame, text="1.0", width=30)
-        self.gamma_label.pack(side="left")
-        self.gamma_slider.configure(command=self._update_gamma_label)
+        gamma_hint = ctk.CTkLabel(
+            gamma_frame,
+            text="(0.1-3.0)",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        )
+        gamma_hint.pack(side="left")
 
         # --- Operation 5: Show Histogram ---
         self.btn_histogram = ctk.CTkButton(
@@ -248,23 +256,36 @@ class ImageProcessorApp(ctk.CTk):
             text="10. Edge",
             command=self.op_edge_detection,
             height=35,
-            width=120
+            width=100
         )
         self.btn_edge.pack(side="left", padx=(0, 5))
 
-        self.edge_threshold = ctk.CTkSlider(
-            edge_frame,
-            from_=10,
-            to=200,
-            number_of_steps=19,
-            width=100
-        )
-        self.edge_threshold.set(50)
-        self.edge_threshold.pack(side="left", padx=5)
+        edge_input_frame = ctk.CTkFrame(edge_frame)
+        edge_input_frame.pack(side="left", fill="x", expand=True)
 
-        self.edge_label = ctk.CTkLabel(edge_frame, text="50", width=30)
-        self.edge_label.pack(side="left")
-        self.edge_threshold.configure(command=self._update_edge_label)
+        threshold_label = ctk.CTkLabel(
+            edge_input_frame,
+            text="Threshold:",
+            font=ctk.CTkFont(size=10)
+        )
+        threshold_label.pack(side="left", padx=(5, 2))
+
+        self.edge_threshold_entry = ctk.CTkEntry(
+            edge_input_frame,
+            width=50,
+            placeholder_text="50"
+        )
+        self.edge_threshold_entry.insert(0, "50")
+        self.edge_threshold_entry.pack(side="left", padx=2)
+
+        # Suggested values hint
+        edge_hint = ctk.CTkLabel(
+            self.operations_frame,
+            text="   Suggested: 30 (sensitive), 50 (normal), 100 (strong edges)",
+            font=ctk.CTkFont(size=9),
+            text_color="gray"
+        )
+        edge_hint.pack(anchor="w", padx=15)
 
         # Separator for Noise operations
         separator2 = ctk.CTkFrame(self.operations_frame, height=2, fg_color="gray50")
@@ -320,14 +341,6 @@ class ImageProcessorApp(ctk.CTk):
             hover_color="#1E8449"
         )
         self.btn_gauss_filter.pack(fill="x", padx=10, pady=5)
-
-    def _update_gamma_label(self, value):
-        """Update gamma label when slider changes"""
-        self.gamma_label.configure(text=f"{value:.1f}")
-
-    def _update_edge_label(self, value):
-        """Update edge threshold label when slider changes"""
-        self.edge_label.configure(text=f"{int(value)}")
 
     def _create_image_display(self):
         """Create image display area"""
@@ -431,6 +444,75 @@ class ImageProcessorApp(ctk.CTk):
         )
         self.history_label.pack(side="right", padx=10)
 
+    def _create_loading_overlay(self):
+        """Create centered loading overlay"""
+        self.loading_overlay = ctk.CTkFrame(
+            self,
+            fg_color=("gray90", "gray20"),
+            corner_radius=15
+        )
+
+        # Loading content
+        self.loading_label = ctk.CTkLabel(
+            self.loading_overlay,
+            text="Processing...",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        self.loading_label.pack(pady=(20, 10))
+
+        self.loading_progress = ctk.CTkProgressBar(
+            self.loading_overlay,
+            width=250,
+            mode="indeterminate"
+        )
+        self.loading_progress.pack(pady=(10, 20), padx=30)
+
+    def _create_debug_console(self):
+        """Create debug console for error reporting"""
+        # Debug console frame at bottom of histogram
+        self.debug_frame = ctk.CTkFrame(self.histogram_frame)
+        self.debug_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        debug_title = ctk.CTkLabel(
+            self.debug_frame,
+            text="Debug Console",
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        debug_title.pack(pady=5)
+
+        self.debug_text = ctk.CTkTextbox(
+            self.debug_frame,
+            height=150,
+            font=ctk.CTkFont(size=10),
+            fg_color=("#1a1a1a", "#1a1a1a"),
+            text_color=("#00ff00", "#00ff00")
+        )
+        self.debug_text.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Clear button
+        clear_btn = ctk.CTkButton(
+            self.debug_frame,
+            text="Clear Log",
+            command=self._clear_debug,
+            height=25,
+            font=ctk.CTkFont(size=10)
+        )
+        clear_btn.pack(pady=5)
+
+    def _log_debug(self, message: str):
+        """Add message to debug console"""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        log_entry = f"[{timestamp}] {message}\n"
+        self.debug_log.append(log_entry)
+        self.debug_text.insert("end", log_entry)
+        self.debug_text.see("end")
+
+    def _clear_debug(self):
+        """Clear debug console"""
+        self.debug_text.delete("1.0", "end")
+        self.debug_log.clear()
+
     def load_image(self):
         """Load image from file"""
         file_path = filedialog.askopenfilename(
@@ -503,6 +585,7 @@ class ImageProcessorApp(ctk.CTk):
         if self.original_image is not None:
             self._add_to_history()
             self.current_image = self.original_image.copy()
+            self.gradient_applied = False  # Reset gradient flag
             self._display_image()
             self._update_buttons_state()
             self._update_info()
@@ -517,31 +600,46 @@ class ImageProcessorApp(ctk.CTk):
             self._update_buttons_state()
 
     def _display_image(self):
-        """Display current image"""
+        """Display current image - always fit within frame"""
         if self.current_image is None:
             return
 
-        # Get display area size
-        self.canvas_frame.update()
-        max_width = self.canvas_frame.winfo_width() - 40
-        max_height = self.canvas_frame.winfo_height() - 40
+        # Force update to get correct frame size
+        self.canvas_frame.update_idletasks()
 
-        if max_width <= 0 or max_height <= 0:
-            max_width = 800
-            max_height = 600
+        # Get actual display area size with padding
+        frame_width = self.canvas_frame.winfo_width()
+        frame_height = self.canvas_frame.winfo_height()
+
+        # Apply padding
+        max_width = max(frame_width - 60, 100)
+        max_height = max(frame_height - 60, 100)
 
         # Create PIL image
         img = Image.fromarray(self.current_image.astype(np.uint8))
+        img_width, img_height = img.size
 
-        # Calculate resize ratio
-        ratio = min(max_width / img.width, max_height / img.height, 1.0)
-        new_size = (int(img.width * ratio), int(img.height * ratio))
+        # Calculate resize ratio - ALWAYS fit, even if image is smaller
+        # But don't upscale more than 1.0 for small images
+        width_ratio = max_width / img_width
+        height_ratio = max_height / img_height
+        ratio = min(width_ratio, height_ratio, 1.0)
+
+        new_width = int(img_width * ratio)
+        new_height = int(img_height * ratio)
+
+        # Ensure minimum size
+        new_width = max(new_width, 50)
+        new_height = max(new_height, 50)
+
+        # Log for debugging
+        self._log_debug(f"Frame: {frame_width}x{frame_height}, Image: {img_width}x{img_height}, Display: {new_width}x{new_height}")
 
         # Create CTkImage (handles HighDPI automatically)
         self.ctk_image = ctk.CTkImage(
             light_image=img,
             dark_image=img,
-            size=new_size
+            size=(new_width, new_height)
         )
 
         # Update label
@@ -621,16 +719,21 @@ class ImageProcessorApp(ctk.CTk):
         )
 
     def _show_progress(self, message="Processing..."):
-        """Show progress bar"""
-        self.progress_label.configure(text=message)
-        self.progress_frame.pack(side="left", padx=20)
-        self.progress_bar.start()
+        """Show centered loading overlay"""
+        self.loading_label.configure(text=message)
+        self.loading_progress.start()
+
+        # Center the overlay
+        self.update_idletasks()
+        x = (self.winfo_width() - 300) // 2
+        y = (self.winfo_height() - 100) // 2
+        self.loading_overlay.place(x=x, y=y, width=300, height=100)
         self.update()
 
     def _hide_progress(self):
-        """Hide progress bar"""
-        self.progress_bar.stop()
-        self.progress_frame.pack_forget()
+        """Hide loading overlay"""
+        self.loading_progress.stop()
+        self.loading_overlay.place_forget()
         self.update()
 
     def apply_operation(self, operation_func, *args, **kwargs):
@@ -718,7 +821,16 @@ class ImageProcessorApp(ctk.CTk):
             messagebox.showwarning("Warning", "Please load an image first!")
             return
 
-        gamma = self.gamma_slider.get()
+        try:
+            gamma = float(self.gamma_entry.get())
+            if gamma <= 0 or gamma > 10:
+                messagebox.showwarning("Warning", "Gamma must be between 0.1 and 10.0")
+                return
+        except ValueError:
+            messagebox.showwarning("Warning", "Please enter a valid gamma value (e.g., 0.5, 1.0, 2.2)")
+            return
+
+        self._log_debug(f"Applying Gamma transformation with γ={gamma}")
 
         def gamma_transform(img):
             # Normalize to [0, 1], apply gamma, scale back to [0, 255]
@@ -726,7 +838,7 @@ class ImageProcessorApp(ctk.CTk):
             return np.power(normalized, gamma) * 255
 
         self.apply_operation(gamma_transform)
-        self.status_label.configure(text=f"Applied: Gamma Transformation (γ = {gamma:.1f})")
+        self.status_label.configure(text=f"Applied: Gamma Transformation (γ = {gamma:.2f})")
 
     def op_show_histogram(self):
         """Operation 5: Toggle histogram panel visibility"""
@@ -842,6 +954,8 @@ class ImageProcessorApp(ctk.CTk):
             messagebox.showwarning("Warning", "Please load an image first!")
             return
 
+        self._log_debug("Applying Gradient Magnitude (Sobel)")
+
         def gradient_magnitude(img):
             M, N = img.shape
 
@@ -870,11 +984,13 @@ class ImageProcessorApp(ctk.CTk):
             # Magnitude
             magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
             # Normalize to [0, 255]
-            magnitude = (magnitude / magnitude.max()) * 255
+            if magnitude.max() > 0:
+                magnitude = (magnitude / magnitude.max()) * 255
 
             return magnitude
 
         self.apply_operation(gradient_magnitude)
+        self.gradient_applied = True  # Mark that gradient was applied
         self.status_label.configure(text="Applied: Gradient Magnitude (Sobel)")
 
     def op_edge_detection(self):
@@ -883,7 +999,28 @@ class ImageProcessorApp(ctk.CTk):
             messagebox.showwarning("Warning", "Please load an image first!")
             return
 
-        threshold = int(self.edge_threshold.get())
+        # Warning if gradient magnitude was not applied first
+        if not self.gradient_applied:
+            result = messagebox.askyesno(
+                "Recommendation",
+                "It is recommended to apply 'Gradient Magnitude' (Operation 9) "
+                "before Edge Detection for better results.\n\n"
+                "Do you want to continue without applying Gradient Magnitude first?"
+            )
+            if not result:
+                return
+
+        # Get threshold from entry
+        try:
+            threshold = int(self.edge_threshold_entry.get())
+            if threshold < 1 or threshold > 255:
+                messagebox.showwarning("Warning", "Threshold must be between 1 and 255")
+                return
+        except ValueError:
+            messagebox.showwarning("Warning", "Please enter a valid threshold value (e.g., 30, 50, 100)")
+            return
+
+        self._log_debug(f"Applying Edge Detection with threshold={threshold}")
 
         def edge_detection(img):
             M, N = img.shape
@@ -912,7 +1049,8 @@ class ImageProcessorApp(ctk.CTk):
 
             # Magnitude and normalize
             magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
-            magnitude = (magnitude / magnitude.max()) * 255
+            if magnitude.max() > 0:
+                magnitude = (magnitude / magnitude.max()) * 255
 
             # Apply threshold
             edges = np.zeros_like(img)
