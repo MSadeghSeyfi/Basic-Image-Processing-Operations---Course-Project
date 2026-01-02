@@ -40,9 +40,7 @@ class ImageProcessorApp(ctk.CTk):
         self._create_layout()
         self._create_toolbar()
         self._create_image_display()
-        self._create_status_bar()
         self._create_loading_overlay()
-        self._create_debug_console()
 
     def _create_layout(self):
         """Create main layout frames"""
@@ -359,17 +357,18 @@ class ImageProcessorApp(ctk.CTk):
         self.display_container = ctk.CTkFrame(self.main_frame)
         self.display_container.pack(fill="both", expand=True)
 
-        # Image canvas frame (left side)
+        # Image canvas frame (left side) - fixed size to prevent resizing
         self.canvas_frame = ctk.CTkFrame(self.display_container)
         self.canvas_frame.pack(side="left", fill="both", expand=True)
 
-        # Image label
+        # Image label - centered and fixed
         self.image_label = ctk.CTkLabel(
             self.canvas_frame,
             text="Load an image to start",
-            font=ctk.CTkFont(size=16)
+            font=ctk.CTkFont(size=16),
+            anchor="center"
         )
-        self.image_label.pack(expand=True)
+        self.image_label.place(relx=0.5, rely=0.5, anchor="center")
 
         # Histogram frame (right side)
         self.histogram_frame = ctk.CTkFrame(self.display_container, width=300)
@@ -406,51 +405,16 @@ class ImageProcessorApp(ctk.CTk):
         # Store CTkImage reference
         self.ctk_image = None
 
-    def _create_status_bar(self):
-        """Create status bar"""
-        self.status_bar = ctk.CTkFrame(self, height=40)
-        self.status_bar.pack(side="bottom", fill="x")
-
-        self.status_label = ctk.CTkLabel(
-            self.status_bar,
-            text="Ready",
-            font=ctk.CTkFont(size=11)
-        )
-        self.status_label.pack(side="left", padx=10)
-
-        # Progress bar (hidden by default)
-        self.progress_frame = ctk.CTkFrame(self.status_bar)
-        self.progress_frame.pack(side="left", padx=20)
-
-        self.progress_label = ctk.CTkLabel(
-            self.progress_frame,
-            text="Processing...",
-            font=ctk.CTkFont(size=11)
-        )
-        self.progress_label.pack(side="left", padx=(0, 10))
-
-        self.progress_bar = ctk.CTkProgressBar(
-            self.progress_frame,
-            width=200,
-            mode="indeterminate"
-        )
-        self.progress_bar.pack(side="left")
-        self.progress_frame.pack_forget()  # Hide initially
-
-        self.history_label = ctk.CTkLabel(
-            self.status_bar,
-            text="History: 0",
-            font=ctk.CTkFont(size=11)
-        )
-        self.history_label.pack(side="right", padx=10)
-
     def _create_loading_overlay(self):
         """Create centered loading overlay"""
         self.loading_overlay = ctk.CTkFrame(
             self,
+            width=300,
+            height=100,
             fg_color=("gray90", "gray20"),
             corner_radius=15
         )
+        self.loading_overlay.pack_propagate(False)
 
         # Loading content
         self.loading_label = ctk.CTkLabel(
@@ -466,52 +430,6 @@ class ImageProcessorApp(ctk.CTk):
             mode="indeterminate"
         )
         self.loading_progress.pack(pady=(10, 20), padx=30)
-
-    def _create_debug_console(self):
-        """Create debug console for error reporting"""
-        # Debug console frame at bottom of histogram
-        self.debug_frame = ctk.CTkFrame(self.histogram_frame)
-        self.debug_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        debug_title = ctk.CTkLabel(
-            self.debug_frame,
-            text="Debug Console",
-            font=ctk.CTkFont(size=12, weight="bold")
-        )
-        debug_title.pack(pady=5)
-
-        self.debug_text = ctk.CTkTextbox(
-            self.debug_frame,
-            height=150,
-            font=ctk.CTkFont(size=10),
-            fg_color=("#1a1a1a", "#1a1a1a"),
-            text_color=("#00ff00", "#00ff00")
-        )
-        self.debug_text.pack(fill="both", expand=True, padx=5, pady=5)
-
-        # Clear button
-        clear_btn = ctk.CTkButton(
-            self.debug_frame,
-            text="Clear Log",
-            command=self._clear_debug,
-            height=25,
-            font=ctk.CTkFont(size=10)
-        )
-        clear_btn.pack(pady=5)
-
-    def _log_debug(self, message: str):
-        """Add message to debug console"""
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        log_entry = f"[{timestamp}] {message}\n"
-        self.debug_log.append(log_entry)
-        self.debug_text.insert("end", log_entry)
-        self.debug_text.see("end")
-
-    def _clear_debug(self):
-        """Clear debug console"""
-        self.debug_text.delete("1.0", "end")
-        self.debug_log.clear()
 
     def load_image(self):
         """Load image from file"""
@@ -541,7 +459,6 @@ class ImageProcessorApp(ctk.CTk):
                 self._display_image()
                 self._update_buttons_state()
                 self._update_info()
-                self.status_label.configure(text=f"Loaded: {file_path.split('/')[-1]}")
 
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load image:\n{str(e)}")
@@ -566,7 +483,6 @@ class ImageProcessorApp(ctk.CTk):
             try:
                 img = Image.fromarray(self.current_image.astype(np.uint8))
                 img.save(file_path)
-                self.status_label.configure(text=f"Saved: {file_path.split('/')[-1]}")
                 messagebox.showinfo("Success", "Image saved successfully!")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save image:\n{str(e)}")
@@ -578,7 +494,6 @@ class ImageProcessorApp(ctk.CTk):
             self._display_image()
             self._update_buttons_state()
             self._update_info()
-            self.status_label.configure(text="Undo successful")
 
     def reset_image(self):
         """Reset to original image"""
@@ -589,7 +504,6 @@ class ImageProcessorApp(ctk.CTk):
             self._display_image()
             self._update_buttons_state()
             self._update_info()
-            self.status_label.configure(text="Reset to original")
 
     def _add_to_history(self):
         """Add current state to history"""
@@ -632,9 +546,6 @@ class ImageProcessorApp(ctk.CTk):
         new_width = max(new_width, 50)
         new_height = max(new_height, 50)
 
-        # Log for debugging
-        self._log_debug(f"Frame: {frame_width}x{frame_height}, Image: {img_width}x{img_height}, Display: {new_width}x{new_height}")
-
         # Create CTkImage (handles HighDPI automatically)
         self.ctk_image = ctk.CTkImage(
             light_image=img,
@@ -653,8 +564,6 @@ class ImageProcessorApp(ctk.CTk):
         self.btn_save.configure(state="normal" if has_image else "disabled")
         self.btn_undo.configure(state="normal" if has_history else "disabled")
         self.btn_reset.configure(state="normal" if has_image else "disabled")
-
-        self.history_label.configure(text=f"History: {len(self.history)}")
 
     def _update_info(self):
         """Update image info display"""
@@ -727,7 +636,7 @@ class ImageProcessorApp(ctk.CTk):
         self.update_idletasks()
         x = (self.winfo_width() - 300) // 2
         y = (self.winfo_height() - 100) // 2
-        self.loading_overlay.place(x=x, y=y, width=300, height=100)
+        self.loading_overlay.place(x=x, y=y)
         self.update()
 
     def _hide_progress(self):
@@ -787,7 +696,6 @@ class ImageProcessorApp(ctk.CTk):
             return img[::2, ::2].copy()
 
         self.apply_operation(reduce_resolution)
-        self.status_label.configure(text="Applied: Reduce Resolution (1/2)")
 
     def op_negative(self):
         """Operation 2: Create negative image (s = 255 - r)"""
@@ -799,7 +707,6 @@ class ImageProcessorApp(ctk.CTk):
             return 255 - img
 
         self.apply_operation(negative)
-        self.status_label.configure(text="Applied: Negative Image (s = 255 - r)")
 
     def op_log_transform(self):
         """Operation 3: Log transformation (y = c * log(1 + x))"""
@@ -813,7 +720,6 @@ class ImageProcessorApp(ctk.CTk):
             return c * np.log(1 + img)
 
         self.apply_operation(log_transform)
-        self.status_label.configure(text="Applied: Log Transformation")
 
     def op_gamma_transform(self):
         """Operation 4: Gamma/Power transformation (y = c * x^gamma)"""
@@ -830,28 +736,23 @@ class ImageProcessorApp(ctk.CTk):
             messagebox.showwarning("Warning", "Please enter a valid gamma value (e.g., 0.5, 1.0, 2.2)")
             return
 
-        self._log_debug(f"Applying Gamma transformation with γ={gamma}")
-
         def gamma_transform(img):
             # Normalize to [0, 1], apply gamma, scale back to [0, 255]
             normalized = img / 255.0
             return np.power(normalized, gamma) * 255
 
         self.apply_operation(gamma_transform)
-        self.status_label.configure(text=f"Applied: Gamma Transformation (γ = {gamma:.2f})")
 
     def op_show_histogram(self):
         """Operation 5: Toggle histogram panel visibility"""
         if self.histogram_frame.winfo_ismapped():
             self.histogram_frame.pack_forget()
             self.btn_histogram.configure(text="5. Show Histogram")
-            self.status_label.configure(text="Histogram hidden")
         else:
             self.histogram_frame.pack(side="right", fill="y", padx=(10, 0))
             self.btn_histogram.configure(text="5. Hide Histogram")
             if self.current_image is not None:
                 self._update_histogram()
-            self.status_label.configure(text="Histogram shown")
 
     def op_histogram_equalization(self):
         """Operation 6: Histogram equalization"""
@@ -888,7 +789,6 @@ class ImageProcessorApp(ctk.CTk):
             return result
 
         self.apply_operation(histogram_equalization)
-        self.status_label.configure(text="Applied: Histogram Equalization")
 
     def op_blur(self):
         """Operation 7: Blur filter (NxN averaging)"""
@@ -916,7 +816,6 @@ class ImageProcessorApp(ctk.CTk):
             return result
 
         self.apply_operation(blur_filter)
-        self.status_label.configure(text=f"Applied: Blur Filter ({n_filter}x{n_filter})")
 
     def op_sharpen(self):
         """Operation 8: Sharpen filter (3x3 Laplacian-based)"""
@@ -946,15 +845,12 @@ class ImageProcessorApp(ctk.CTk):
             return result
 
         self.apply_operation(sharpen_filter)
-        self.status_label.configure(text="Applied: Sharpen Filter (3x3)")
 
     def op_gradient_magnitude(self):
         """Operation 9: Gradient magnitude using Sobel operators"""
         if self.current_image is None:
             messagebox.showwarning("Warning", "Please load an image first!")
             return
-
-        self._log_debug("Applying Gradient Magnitude (Sobel)")
 
         def gradient_magnitude(img):
             M, N = img.shape
@@ -991,7 +887,6 @@ class ImageProcessorApp(ctk.CTk):
 
         self.apply_operation(gradient_magnitude)
         self.gradient_applied = True  # Mark that gradient was applied
-        self.status_label.configure(text="Applied: Gradient Magnitude (Sobel)")
 
     def op_edge_detection(self):
         """Operation 10: Edge detection with threshold"""
@@ -1019,8 +914,6 @@ class ImageProcessorApp(ctk.CTk):
         except ValueError:
             messagebox.showwarning("Warning", "Please enter a valid threshold value (e.g., 30, 50, 100)")
             return
-
-        self._log_debug(f"Applying Edge Detection with threshold={threshold}")
 
         def edge_detection(img):
             M, N = img.shape
@@ -1059,7 +952,6 @@ class ImageProcessorApp(ctk.CTk):
             return edges
 
         self.apply_operation(edge_detection)
-        self.status_label.configure(text=f"Applied: Edge Detection (threshold={threshold})")
 
     def op_add_salt_pepper(self):
         """Add Salt & Pepper noise (15%)"""
@@ -1089,7 +981,6 @@ class ImageProcessorApp(ctk.CTk):
             return noisy
 
         self.apply_operation(add_salt_pepper)
-        self.status_label.configure(text="Applied: Salt & Pepper Noise (15%)")
 
     def op_add_gaussian_noise(self):
         """Add Gaussian noise"""
@@ -1103,7 +994,6 @@ class ImageProcessorApp(ctk.CTk):
             return np.clip(noisy, 0, 255)
 
         self.apply_operation(add_gaussian_noise)
-        self.status_label.configure(text="Applied: Gaussian Noise (σ=50)")
 
     def op_median_filter(self):
         """Median filter (5x5) - good for Salt & Pepper noise"""
@@ -1127,7 +1017,6 @@ class ImageProcessorApp(ctk.CTk):
             return result
 
         self.apply_operation(median_filter)
-        self.status_label.configure(text="Applied: Median Filter (5x5)")
 
     def op_gaussian_filter(self):
         """Gaussian filter (5x5) - good for Gaussian noise"""
@@ -1161,7 +1050,6 @@ class ImageProcessorApp(ctk.CTk):
             return result
 
         self.apply_operation(gaussian_filter)
-        self.status_label.configure(text="Applied: Gaussian Filter (5x5, σ=1.5)")
 
 
 if __name__ == "__main__":
